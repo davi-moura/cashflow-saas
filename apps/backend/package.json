@@ -7,6 +7,7 @@
     "dev": "nest start --watch",
     "start": "node dist/main",
     "start:prod": "node dist/main",
+    "postinstall": "prisma generate",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "test": "jest",
     "test:watch": "jest --watch",
