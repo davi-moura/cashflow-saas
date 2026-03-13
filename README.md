@@ -47,6 +47,22 @@ pnpm dev:backend
 pnpm dev:frontend
 ```
 
+## Deploy na Vercel (frontend)
+
+1. Acesse [vercel.com](https://vercel.com), faça login e **Add New** → **Project**.
+2. Importe o repositório **davi-moura/cashflow-saas** (conecte o GitHub se precisar).
+3. **Configure o projeto:**
+   - **Root Directory:** clique em **Edit** e selecione `apps/frontend`.
+   - **Framework Preset:** Vite (deve detectar automaticamente).
+   - **Build Command:** `npm run build` (padrão).
+   - **Output Directory:** `dist` (padrão).
+4. **Variáveis de ambiente:** em **Environment Variables** adicione:
+   - `VITE_API_URL` = URL da sua API em produção (ex: `https://sua-api.railway.app/api` ou `https://seu-backend.onrender.com/api`).  
+   Se o backend ainda não estiver no ar, use temporariamente a URL do backend quando subir (Railway, Render, etc.).
+5. Clique em **Deploy**. O frontend ficará em `https://seu-projeto.vercel.app`.
+
+**Backend:** a API (NestJS) precisa estar hospedada em outro serviço (ex.: [Railway](https://railway.app), [Render](https://render.com)) e com CORS liberado para o domínio do frontend na Vercel.
+
 ## Documentação
 
 Consulte a pasta `docs/` para visão geral, estrutura, modelagem, endpoints e fluxos.
