@@ -123,7 +123,10 @@ export class AuthService {
       where: { userId },
       include: { tenant: true },
     });
-    return list.map((tu) => this.toTenantDto(tu.tenant));
+    return list.map(
+      (tu: { tenant: { id: string; name: string; slug: string } }) =>
+        this.toTenantDto(tu.tenant),
+    );
   }
 
   private toUserDto(user: { id: string; email: string; name: string | null }): UserResponseDto {

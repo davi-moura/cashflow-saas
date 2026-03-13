@@ -26,7 +26,9 @@ export class PermissionsGuard implements CanActivate {
     });
     if (!tenantUser) throw new ForbiddenException('Sem acesso a esta empresa');
     const slugs = new Set(
-      tenantUser.role.rolePermissions.map((rp) => rp.permission.slug),
+      tenantUser.role.rolePermissions.map(
+        (rp: { permission: { slug: string } }) => rp.permission.slug,
+      ),
     );
     const hasAll = required.every((p) => slugs.has(p));
     if (!hasAll) throw new ForbiddenException('Permissão insuficiente');
