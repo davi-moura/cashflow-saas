@@ -1,0 +1,456 @@
+// CashFlow SaaS - Schema multi-tenant
+// Convenções: UUID PK, tenant_id em tabelas de negócio, createdAt/updatedAt/deletedAt
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== MULTI-TENANT & AUTH ==========
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  tenantUsers TenantUser[]
+  accounts    Account[]
+  categories  Category[]
+  costCenters CostCenter[]
+  customers   Customer[]
+  suppliers   Supplier[]
+  payables    Payable[]
+  receivables Receivable[]
+  payableInstallments    PayableInstallment[]
+  receivableInstallments ReceivableInstallment[]
+  financialEntries FinancialEntry[]
+  bankStatements   BankStatement[]
+  attachments      Attachment[]
+  auditLogs        AuditLog[]
+  recurrenceRules  RecurrenceRule[]
+}
+
+model RecurrenceRule {
+  id        String   @id @default(uuid())
+  tenantId  String
+  frequency String   // daily | weekly | monthly | yearly
+  interval  Int      @default(1)
+  endDate   DateTime? @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries FinancialEntry[]
+
+  @@index([tenantId])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  passwordHash String
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  tenantUsers TenantUser[]
+  sessions    Session[]
+  auditLogs   AuditLog[]
+}
+
+model TenantUser {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  slug        String   @unique  // admin, financeiro, gestor, operador
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+  tenantUsers     TenantUser[]
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  slug        String   @unique  // entry:view, entry:edit, etc.
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String   @id @default(uuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  revokedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+// ========== CONTAS E CATEGORIZAÇÃO ==========
+
+model Account {
+  id             String   @id @default(uuid())
+  tenantId       String
+  name           String
+  type           String   // bank | cash
+  bankCode       String?
+  agency         String?
+  accountNumber  String?
+  openingBalance Decimal  @default(0) @db.Decimal(19, 4)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  financialEntries  FinancialEntry[]   @relation("AccountEntries")
+  statementLines    StatementLine[]
+  bankStatements    BankStatement[]
+  payables          Payable[]
+  receivables       Receivable[]
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  type      String   // income | expense
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  financialEntries FinancialEntry[]
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+}
+
+model CostCenter {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  financialEntries FinancialEntry[]
+
+  @@index([tenantId])
+}
+
+model Customer {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  document    String?
+  email       String?
+  phone       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  financialEntries FinancialEntry[]
+  receivables      Receivable[]
+
+  @@index([tenantId])
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  document  String?
+  email     String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  financialEntries FinancialEntry[]
+  payables         Payable[]
+
+  @@index([tenantId])
+}
+
+// ========== LANÇAMENTOS FINANCEIROS ==========
+
+model FinancialEntry {
+  id              String    @id @default(uuid())
+  tenantId        String
+  accountId       String
+  categoryId      String?
+  costCenterId    String?
+  customerId      String?
+  supplierId      String?
+  type            String    // income | expense | transfer_out | transfer_in
+  value           Decimal   @db.Decimal(19, 4)
+  description     String?
+  competenceDate  DateTime  @db.Date
+  dueDate         DateTime? @db.Date
+  settledAt      DateTime?
+  parentId        String?   // estorno: aponta para o lançamento estornado
+  transferPairId  String?   // transferência: par saída/entrada
+  recurrenceRuleId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account        Account      @relation("AccountEntries", fields: [accountId], references: [id])
+  category       Category?    @relation(fields: [categoryId], references: [id])
+  costCenter     CostCenter?  @relation(fields: [costCenterId], references: [id])
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  supplier       Supplier?    @relation(fields: [supplierId], references: [id])
+  parent         FinancialEntry?  @relation("EntryReversal", fields: [parentId], references: [id])
+  reversals      FinancialEntry[]  @relation("EntryReversal")
+  recurrenceRule RecurrenceRule?  @relation(fields: [recurrenceRuleId], references: [id])
+  reconciliation  Reconciliation?
+  payableInstallments PayableInstallment[]
+  receivableInstallments ReceivableInstallment[]
+
+  @@index([tenantId])
+  @@index([tenantId, accountId])
+  @@index([tenantId, competenceDate])
+  @@index([tenantId, settledAt])
+  @@index([accountId, settledAt])
+  @@index([parentId])
+}
+
+// ========== CONTAS A PAGAR / RECEBER ==========
+
+model Payable {
+  id          String   @id @default(uuid())
+  tenantId    String
+  supplierId  String?
+  accountId   String?  // conta padrão para pagamento
+  description String
+  totalValue  Decimal  @db.Decimal(19, 4)
+  status      String   // open | partial | paid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier    Supplier?           @relation(fields: [supplierId], references: [id])
+  account     Account?             @relation(fields: [accountId], references: [id])
+  installments PayableInstallment[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([supplierId])
+}
+
+model PayableInstallment {
+  id         String    @id @default(uuid())
+  tenantId   String
+  payableId  String
+  dueDate    DateTime  @db.Date
+  amount     Decimal   @db.Decimal(19, 4)
+  paidAmount Decimal   @default(0) @db.Decimal(19, 4)
+  settledAt  DateTime?
+  number     Int       // número da parcela
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payable    Payable        @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  financialEntry FinancialEntry? @relation(fields: [financialEntryId], references: [id])
+  financialEntryId String?   @unique
+
+  @@index([tenantId])
+  @@index([payableId])
+  @@index([tenantId, dueDate])
+}
+
+model Receivable {
+  id          String   @id @default(uuid())
+  tenantId    String
+  customerId  String?
+  accountId   String?
+  description String
+  totalValue  Decimal  @db.Decimal(19, 4)
+  status      String   // open | partial | received
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer    Customer?              @relation(fields: [customerId], references: [id])
+  account     Account?                @relation(fields: [accountId], references: [id])
+  installments ReceivableInstallment[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([customerId])
+}
+
+model ReceivableInstallment {
+  id           String    @id @default(uuid())
+  tenantId     String
+  receivableId String
+  dueDate     DateTime  @db.Date
+  amount      Decimal   @db.Decimal(19, 4)
+  receivedAmount Decimal @default(0) @db.Decimal(19, 4)
+  settledAt   DateTime?
+  number      Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receivable Receivable    @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  financialEntry FinancialEntry? @relation(fields: [financialEntryId], references: [id])
+  financialEntryId String?  @unique
+
+  @@index([tenantId])
+  @@index([receivableId])
+  @@index([tenantId, dueDate])
+}
+
+// ========== CONCILIAÇÃO ==========
+
+model BankStatement {
+  id        String   @id @default(uuid())
+  tenantId  String
+  accountId String
+  periodStart DateTime @db.Date
+  periodEnd   DateTime @db.Date
+  importedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  lines   StatementLine[]
+
+  @@index([tenantId])
+  @@index([accountId])
+}
+
+model StatementLine {
+  id             String   @id @default(uuid())
+  statementId    String
+  accountId      String
+  transactionDate DateTime @db.Date
+  description   String?
+  value          Decimal  @db.Decimal(19, 4)  // positivo entrada, negativo saída
+  balance        Decimal? @db.Decimal(19, 4)
+  externalId     String?  // id no extrato
+  createdAt      DateTime @default(now())
+
+  statement       BankStatement   @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  account         Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reconciliation  Reconciliation?
+
+  @@index([statementId])
+  @@index([accountId, transactionDate])
+}
+
+model Reconciliation {
+  id                String   @id @default(uuid())
+  statementLineId   String   @unique
+  financialEntryId  String   @unique
+  reconciledAt     DateTime @default(now())
+  reconciledById   String?
+
+  statementLine  StatementLine  @relation(fields: [statementLineId], references: [id], onDelete: Cascade)
+  financialEntry FinancialEntry @relation(fields: [financialEntryId], references: [id], onDelete: Cascade)
+
+  @@index([statementLineId])
+  @@index([financialEntryId])
+}
+
+// ========== ANEXOS E AUDITORIA ==========
+
+model Attachment {
+  id          String   @id @default(uuid())
+  tenantId    String
+  entityType  String
+  entityId    String
+  fileKey     String
+  filename    String
+  contentType String
+  size        Int
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  entityType String
+  entityId   String
+  action     String
+  oldValue   Json?
+  newValue   Json?
+  userId     String
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+  @@index([userId])
+}
